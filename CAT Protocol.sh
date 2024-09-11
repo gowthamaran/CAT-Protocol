@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# Display links at the start
-echo -e "\nWelcome to the Fractal Node Setup Script.\n"
-echo -e "Join Telegram channel: telegram.me/Maranscrypto"
-echo -e "Follow us on 𝕏 : x.com/Maranscrypto\n"
-
 # Colors for styling
 COLOR_RED="\e[31m"
 COLOR_GREEN="\e[32m"
@@ -12,6 +7,42 @@ COLOR_YELLOW="\e[33m"
 COLOR_BLUE="\e[34m"
 COLOR_CYAN="\e[36m"
 COLOR_RESET="\e[0m"
+
+# Function to display and open links
+display_and_open_links() {
+    local telegram_link="https://telegram.me/Maranscrypto"
+    local twitter_link="https://x.com/Maranscrypto"
+
+    echo -e "\nWelcome to the Fractal Node Setup Script.\n"
+    echo -e "Join Telegram channel: ${COLOR_BLUE}${telegram_link}${COLOR_RESET}"
+    echo -e "Follow us on 𝕏 : ${COLOR_BLUE}${twitter_link}${COLOR_RESET}\n"
+
+    echo -e "To open these links, you can run the following commands:"
+    echo -e "${COLOR_YELLOW}xdg-open ${telegram_link}${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}xdg-open ${twitter_link}${COLOR_RESET}\n"
+
+    # Attempt to open links if xdg-open is available
+    if command -v xdg-open &> /dev/null; then
+        read -p "Do you want to open these links now? (y/n): " choice
+        case "$choice" in 
+            y|Y ) 
+                xdg-open "$telegram_link" &> /dev/null
+                xdg-open "$twitter_link" &> /dev/null
+                echo "Links opened in your default browser."
+                ;;
+            * ) 
+                echo "Links not opened. You can use the commands above to open them later."
+                ;;
+        esac
+    else
+        echo "xdg-open is not available. Please open the links manually in your browser."
+    fi
+}
+
+# Call the function to display and potentially open links
+display_and_open_links
+
+# Rest of the script remains the same...
 
 # Log function with emoji support
 log() {
@@ -24,138 +55,146 @@ handle_error() {
     exit 1
 }
 
-# Check if file exists
-check_file_exists() {
-    if [ -f "$1" ]; then
-        log "${COLOR_YELLOW}⚠️  File $1 already exists, skipping download.${COLOR_RESET}"
-        return 1
-    fi
-    return 0
+Crontab_file="/usr/bin/crontab"
+
+# Check if root user
+check_root() {
+    [[ $EUID != 0 ]] && echo "Error: Not currently root user. Please switch to root account or use 'sudo su' to obtain temporary root privileges." && exit 1
 }
 
-# Check if directory exists
-check_directory_exists() {
-    if [ -d "$1" ]; then
-        log "${COLOR_GREEN}📁 Directory $1 already exists.${COLOR_RESET}"
-    else
-        log "${COLOR_YELLOW}📂 Creating directory $1...${COLOR_RESET}"
-        mkdir -p "$1" || handle_error "Failed to create directory $1."
-    fi
+# Install dependencies and full node
+install_env_and_full_node() {
+    check_root
+    # Update and upgrade system
+    sudo apt update && sudo apt upgrade -y
+
+    # Install necessary tools and libraries
+    sudo apt install curl tar wget clang pkg-config libssl-dev jq build-essential git make ncdu unzip zip docker.io -y
+
+    # Get the latest version of Docker Compose
+    VERSION=$(curl --silent https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*\d')
+    DESTINATION=/usr/local/bin/docker-compose
+    sudo curl -L https://github.com/docker/compose/releases/download/${VERSION}/docker-compose-$(uname -s)-$(uname -m) -o $DESTINATION
+    sudo chmod 755 $DESTINATION
+
+    # Install Node.js and Yarn
+    sudo apt-get install npm -y
+    sudo npm install n -g
+    sudo n stable
+    sudo npm i -g yarn
+
+    # Clone CAT Token Box project and install and build
+    git clone https://github.com/CATProtocol/cat-token-box
+    cd cat-token-box
+    sudo yarn install
+    sudo yarn build
+
+    # Set up Docker environment and start services
+    cd ./packages/tracker/
+    sudo chmod 777 docker/data
+    sudo chmod 777 docker/pgdata
+    sudo docker-compose up -d
+
+    # Build and run Docker image
+    cd ../../
+    sudo docker build -t tracker:latest .
+    sudo docker run -d \
+        --name tracker \
+        --add-host="host.docker.internal:host-gateway" \
+        -e DATABASE_HOST="host.docker.internal" \
+        -e RPC_HOST="host.docker.internal" \
+        -p 3000:3000 \
+        tracker:latest
+
+    # Create configuration file
+    echo '{
+      "network": "fractal-mainnet",
+      "tracker": "http://127.0.0.1:3000",
+      "dataDir": ".",
+      "maxFeeRate": 30,
+      "rpc": {
+          "url": "http://127.0.0.1:8332",
+          "username": "bitcoin",
+          "password": "opcatAwesome"
+      }
+    }' > ~/cat-token-box/packages/cli/config.json
+
+    # Create mint script
+    echo '#!/bin/bash
+
+    command="sudo yarn cli mint -i 45ee725c2c5993b3e4d308842d87e973bf1951f5f7a804b21e4dd964ecd12d6b_0 5"
+
+    while true; do
+        $command
+
+        if [ $? -ne 0 ]; then
+            echo "Command execution failed, exiting loop"
+            exit 1
+        fi
+
+        sleep 1
+    done' > ~/cat-token-box/packages/cli/mint_script.sh
+    chmod +x ~/cat-token-box/packages/cli/mint_script.sh
 }
 
-# Check and install missing packages
-check_and_install_package() {
-    if ! dpkg -l | grep -qw "$1"; then
-        log "${COLOR_YELLOW}📦 Installing $1...${COLOR_RESET}"
-        sudo apt-get install -y "$1" || handle_error "Failed to install $1."
-    else
-        log "${COLOR_GREEN}✔️  $1 is already installed!${COLOR_RESET}"
-    fi
-}
-
-# Prepare server: update and install necessary packages
-prepare_server() {
-    log "${COLOR_BLUE}🔄 Updating server and installing necessary packages...${COLOR_RESET}"
-    sudo apt-get update -y && sudo apt-get upgrade -y || handle_error "Failed to update server."
-
-    local packages=("make" "build-essential" "pkg-config" "libssl-dev" "unzip" "tar" "lz4" "gcc" "git" "jq")
-    for package in "${packages[@]}"; do
-        check_and_install_package "$package"
-    done
-}
-
-# Download and extract Fractal Node
-download_and_extract() {
-    local url="https://github.com/fractal-bitcoin/fractald-release/releases/download/v0.1.7/fractald-0.1.7-x86_64-linux-gnu.tar.gz"
-    local filename="fractald-0.1.7-x86_64-linux-gnu.tar.gz"
-    local dirname="fractald-0.1.7-x86_64-linux-gnu"
-
-    check_file_exists "$filename"
-    if [ $? -eq 0 ]; then
-        log "${COLOR_BLUE}⬇️  Downloading Fractal Node...${COLOR_RESET}"
-        wget -q "$url" -O "$filename" || handle_error "Failed to download $filename."
-    fi
-
-    log "${COLOR_BLUE}🗜️  Extracting $filename...${COLOR_RESET}"
-    tar -zxvf "$filename" || handle_error "Failed to extract $filename."
-
-    check_directory_exists "$dirname/data"
-    cp "$dirname/bitcoin.conf" "$dirname/data" || handle_error "Failed to copy bitcoin.conf to $dirname/data."
-}
-
-# Check if wallet already exists
-check_wallet_exists() {
-    if [ -f "$HOME/.bitcoin/wallets/wallet/wallet.dat" ]; then
-        log "${COLOR_GREEN}💰 Wallet already exists, skipping wallet creation.${COLOR_RESET}"
-        return 1
-    fi
-    return 0
-}
-
-# Create new wallet
+# Create wallet
 create_wallet() {
-    log "${COLOR_BLUE}🔍 Checking if wallet exists...${COLOR_RESET}"
-    check_wallet_exists
-    if [ $? -eq 1 ]; then
-        log "${COLOR_GREEN}✅ Wallet already exists, no need to create a new one.${COLOR_RESET}"
-        return
-    fi
-
-    log "${COLOR_BLUE}💼 Creating new wallet...${COLOR_RESET}"
-
-    cd fractald-0.1.7-x86_64-linux-gnu/bin || handle_error "Failed to enter bin directory."
-    ./bitcoin-wallet -wallet=wallet -legacy create || handle_error "Failed to create wallet."
-
-    log "${COLOR_BLUE}🔑 Exporting wallet private key...${COLOR_RESET}"
-    ./bitcoin-wallet -wallet=$HOME/.bitcoin/wallets/wallet/wallet.dat -dumpfile=$HOME/.bitcoin/wallets/wallet/MyPK.dat dump || handle_error "Failed to export wallet private key."
-
-    PRIVATE_KEY=$(awk -F 'checksum,' '/checksum/ {print "Wallet private key:" $2}' $HOME/.bitcoin/wallets/wallet/MyPK.dat)
-    log "${COLOR_RED}$PRIVATE_KEY${COLOR_RESET}"
-    log "${COLOR_YELLOW}⚠️  Please make sure to record your private key!${COLOR_RESET}"
+  echo -e "\n"
+  cd ~/cat-token-box/packages/cli
+  sudo yarn cli wallet create
+  echo -e "\n"
+  sudo yarn cli wallet address
+  echo -e "Please save the wallet address and mnemonic phrase created above."
 }
 
-# Create systemd service file for Fractal Node
-create_service_file() {
-    log "${COLOR_BLUE}🛠️  Creating system service for Fractal Node...${COLOR_RESET}"
-
-    if [ -f "/etc/systemd/system/fractald.service" ]; then
-        log "${COLOR_YELLOW}⚠️  Service file already exists, skipping creation.${COLOR_RESET}"
-    else
-        sudo tee /etc/systemd/system/fractald.service > /dev/null << EOF
-[Unit]
-Description=Fractal Node
-After=network-online.target
-[Service]
-User=$USER
-ExecStart=$HOME/fractald-0.1.7-x86_64-linux-gnu/bin/bitcoind -datadir=$HOME/fractald-0.1.7-x86_64-linux-gnu/data/ -maxtipage=504576000
-Restart=always
-RestartSec=5
-LimitNOFILE=infinity
-[Install]
-WantedBy=multi-user.target
-EOF
-
-        sudo systemctl daemon-reload || handle_error "Failed to execute daemon-reload."
-        sudo systemctl enable fractald || handle_error "Failed to enable fractald service."
-    fi
+# Start mint script
+start_mint_cat() {
+  cd ~/cat-token-box/packages/cli
+  bash ~/cat-token-box/packages/cli/mint_script.sh
 }
 
-# Start Fractal Node service
-start_node() {
-    log "${COLOR_BLUE}🚀 Starting Fractal Node...${COLOR_RESET}"
-    sudo systemctl start fractald || handle_error "Failed to start fractald service."
-    log "${COLOR_GREEN}🎉 Fractal Node has been successfully started!${COLOR_RESET}"
-    log "${COLOR_CYAN}📝 To view node logs, run: ${COLOR_BLUE}sudo journalctl -u fractald -f --no-hostname -o cat${COLOR_RESET}"
+# Check node synchronization log
+check_node_log() {
+  docker logs -f --tail 100 tracker
 }
 
-# Main function to control script execution flow
-main() {
-    prepare_server
-    download_and_extract
-    create_service_file
+# Check wallet balance
+check_wallet_balance() {
+  cd ~/cat-token-box/packages/cli
+  sudo yarn cli wallet balances
+}
+
+# Display main menu
+echo -e "\n
+Welcome to the CAT Token Box installation script.
+This script is completely free and open source.
+Please choose an operation as needed:
+1. Install dependencies and full node
+2. Create wallet
+3. Start minting CAT
+4. Check node synchronization log
+5. Check wallet balance
+"
+
+# Get user selection and perform corresponding operation
+read -e -p "Please enter your choice: " num
+case "$num" in
+1)
+    install_env_and_full_node
+    ;;
+2)
     create_wallet
-    start_node
-}
-
-# Start main process
-main
+    ;;
+3)
+    start_mint_cat
+    ;;
+4)
+    check_node_log
+    ;;
+5)
+    check_wallet_balance
+    ;;
+*)
+    echo -e "Error: Please enter a valid number."
+    ;;
+esac
