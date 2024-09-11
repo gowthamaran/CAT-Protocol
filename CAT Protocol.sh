@@ -16,27 +16,6 @@ display_and_open_links() {
     echo -e "\nWelcome to the Fractal Node Setup Script.\n"
     echo -e "Join Telegram channel: ${COLOR_BLUE}${telegram_link}${COLOR_RESET}"
     echo -e "Follow us on 𝕏 : ${COLOR_BLUE}${twitter_link}${COLOR_RESET}\n"
-
-    echo -e "To open these links, you can run the following commands:"
-    echo -e "${COLOR_YELLOW}xdg-open ${telegram_link}${COLOR_RESET}"
-    echo -e "${COLOR_YELLOW}xdg-open ${twitter_link}${COLOR_RESET}\n"
-
-    # Attempt to open links if xdg-open is available
-    if command -v xdg-open &> /dev/null; then
-        read -p "Do you want to open these links now? (y/n): " choice
-        case "$choice" in 
-            y|Y ) 
-                xdg-open "$telegram_link" &> /dev/null
-                xdg-open "$twitter_link" &> /dev/null
-                echo "Links opened in your default browser."
-                ;;
-            * ) 
-                echo "Links not opened. You can use the commands above to open them later."
-                ;;
-        esac
-    else
-        echo "xdg-open is not available. Please open the links manually in your browser."
-    fi
 }
 
 # Call the function to display and potentially open links
