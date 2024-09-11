@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Display links at the start
-echo -e "\nWelcome to the Fractal Node & $CAT Miner Setup Script.\n"
-echo -e "Join Telegram channel: https://t.me/maranscrypto"
-echo -e "Follow us on 𝕏 : https://x.com/maranscrypto\n"
+echo -e "\nWelcome to the Fractal Node Setup Script.\n"
+echo -e "Join Telegram channel: telegram.me/Maranscrypto"
+echo -e "Follow us on 𝕏 : x.com/Maranscrypto\n"
 
 # Colors for styling
 COLOR_RED="\e[31m"
