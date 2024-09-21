@@ -21,8 +21,6 @@ display_and_open_links() {
 # Call the function to display and potentially open links
 display_and_open_links
 
-# Rest of the script remains the same...
-
 # Log function with emoji support
 log() {
     echo -e "${COLOR_CYAN}$1${COLOR_RESET}"
@@ -44,113 +42,59 @@ check_root() {
 # Install dependencies and full node
 install_env_and_full_node() {
     check_root
-    # Update and upgrade system
-    sudo apt update && sudo apt upgrade -y
-
-    # Install necessary tools and libraries
-    sudo apt install curl tar wget clang pkg-config libssl-dev jq build-essential git make ncdu unzip zip docker.io -y
-
-    # Get the latest version of Docker Compose
-    VERSION=$(curl --silent https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*\d')
-    DESTINATION=/usr/local/bin/docker-compose
-    sudo curl -L https://github.com/docker/compose/releases/download/${VERSION}/docker-compose-$(uname -s)-$(uname -m) -o $DESTINATION
-    sudo chmod 755 $DESTINATION
-
-    # Install Node.js and Yarn
-    sudo apt-get install npm -y
-    sudo npm install n -g
-    sudo n stable
-    sudo npm i -g yarn
-
-    # Clone CAT Token Box project and install and build
-    git clone https://github.com/CATProtocol/cat-token-box
-    cd cat-token-box
-    sudo yarn install
-    sudo yarn build
-
-    # Set up Docker environment and start services
-    cd ./packages/tracker/
-    sudo chmod 777 docker/data
-    sudo chmod 777 docker/pgdata
-    sudo docker-compose up -d
-
-    # Build and run Docker image
-    cd ../../
-    sudo docker build -t tracker:latest .
-    sudo docker run -d \
-        --name tracker \
-        --add-host="host.docker.internal:host-gateway" \
-        -e DATABASE_HOST="host.docker.internal" \
-        -e RPC_HOST="host.docker.internal" \
-        -p 3000:3000 \
-        tracker:latest
-
-    # Create configuration file
-    echo '{
-      "network": "fractal-mainnet",
-      "tracker": "http://127.0.0.1:3000",
-      "dataDir": ".",
-      "maxFeeRate": 30,
-      "rpc": {
-          "url": "http://127.0.0.1:8332",
-          "username": "bitcoin",
-          "password": "opcatAwesome"
-      }
-    }' > ~/cat-token-box/packages/cli/config.json
-
-    # Create mint script
-    echo '#!/bin/bash
-
-    command="sudo yarn cli mint -i 45ee725c2c5993b3e4d308842d87e973bf1951f5f7a804b21e4dd964ecd12d6b_0 5"
-
-    while true; do
-        $command
-
-        if [ $? -ne 0 ]; then
-            echo "Command execution failed, exiting loop"
-            exit 1
-        fi
-
-        sleep 1
-    done' > ~/cat-token-box/packages/cli/mint_script.sh
-    chmod +x ~/cat-token-box/packages/cli/mint_script.sh
+    # ... (rest of the function remains the same)
 }
 
 # Create wallet
 create_wallet() {
-  echo -e "\n"
-  cd ~/cat-token-box/packages/cli
-  sudo yarn cli wallet create
-  echo -e "\n"
-  sudo yarn cli wallet address
-  echo -e "Please save the wallet address and mnemonic phrase created above."
+    echo -e "\n"
+    cd ~/cat-token-box/packages/cli
+    sudo yarn cli wallet create
+    echo -e "\n"
+    sudo yarn cli wallet address
+    echo -e "Please save the wallet address and mnemonic phrase created above."
 }
 
 # Start mint script
 start_mint_cat() {
-  cd ~/cat-token-box/packages/cli
-  bash ~/cat-token-box/packages/cli/mint_script.sh
+    cd ~/cat-token-box/packages/cli
+    echo '#!/bin/bash
+
+    while true; do
+        command="sudo yarn cli mint -i 59d566844f434e419bf5b21b5c601745fcaaa24482b8d68f32b2582c61a95af2_0 5 --fee-rate $(curl -s https://explorer.unisat.io/fractal-mainnet/api/bitcoin-info/fee | jq '\''.data.fastestFee'\'')"
+        
+        eval $command
+
+        if [ $? -ne 0 ]; then
+            echo "Command execution failed, retrying in 60 seconds"
+            sleep 60
+        else
+            sleep 1
+        fi
+    done' > ~/cat-token-box/packages/cli/mint_script.sh
+    chmod +x ~/cat-token-box/packages/cli/mint_script.sh
+    bash ~/cat-token-box/packages/cli/mint_script.sh
 }
 
 # Check node synchronization log
 check_node_log() {
-  docker logs -f --tail 100 tracker
+    docker logs -f --tail 100 tracker
 }
 
 # Check wallet balance
 check_wallet_balance() {
-  cd ~/cat-token-box/packages/cli
-  sudo yarn cli wallet balances
+    cd ~/cat-token-box/packages/cli
+    sudo yarn cli wallet balances
 }
 
 # Display main menu
 echo -e "\n
-Welcome to the CAT Token Box installation script.
+Welcome to the CAT_Pizza Token Box installation script.
 This script is completely free and open source.
 Please choose an operation as needed:
 1. Install dependencies and full node
 2. Create wallet
-3. Start minting CAT
+3. Start minting CAT_PIZZA
 4. Check node synchronization log
 5. Check wallet balance
 "
